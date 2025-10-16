@@ -1,10 +1,27 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+import enum
 
-class User(Base):
+
+class UserRole(str,enum.Enum):
+    CUSTOMER = "customer"
+    ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
+
+class ProductCategory(str, enum.Enum):
+    ELECTRONICS = "electronics"
+    FASHION = "fashion"
+    GROCERY = "grocery"
+    BOOKS = "books"
+    HOME_APPLIANCES = "home_appliances"
+    TOYS = "toys"
+    BEAUTY = "beauty"
+
+
+class Users(Base):
 
     __tablename__ = "users"
 
@@ -14,8 +31,10 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String)
     is_active = Column(Boolean, default=True)
+    role = Column(Enum(UserRole), default= UserRole.CUSTOMER, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
     # Relationship of user with Order class model
     orders = relationship("Order", back_populates="user")
 
@@ -29,7 +48,7 @@ class Order(Base):
     stripe_payment_intent_id = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("User", back_populates="orders")
+    user = relationship("Users", back_populates="orders")
     order_items = relationship("OrderItem", back_populates="order")
 
 class OrderItem(Base):
@@ -56,5 +75,3 @@ class Product(Base):
     category = Column(String, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-

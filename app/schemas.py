@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator, constr
 from typing import List, Optional
 from datetime import datetime
+from app.models import UserRole, ProductCategory
 
 # Schema for user registration
 class UserCreate(BaseModel):
@@ -16,10 +17,20 @@ class UserResponse(BaseModel):
     username: str
     full_name: Optional[str]
     is_active: bool
+    role: UserRole
     created_at: datetime
     
     class Config:
         from_attributes = True 
+
+# Admins can change the roles
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+
+#Schema for updating user information
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 # Schema for creating new products
 class ProductCreate(BaseModel):
@@ -27,7 +38,7 @@ class ProductCreate(BaseModel):
     description: Optional[str] = None
     price: float
     stock_quantity: int = 0
-    category: Optional[str] = None
+    category: ProductCategory 
     
     @field_validator('price')
     def validate_price(cls, v):
@@ -88,11 +99,15 @@ class OrderResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# Authentication Schemas
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
 # Schema for token payload data
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+# pydantic models to validate username and password before submitting to db
+class CreateUserRequest(BaseModel):
+    username : str
+    password : str
+
+class Token(BaseModel):
+    access_token : str
+    token_type: str
