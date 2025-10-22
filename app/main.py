@@ -211,4 +211,26 @@ async def create_order(order: OrderCreate, db: db_dependency, current_user : Use
 
     return db_order
 
+# get all orders
+@app.get("/orders", response_model= List[OrderResponse])
+async def get_user_orders(db: db_dependency, current_user: Users= Depends(get_current_user)):
+    orders = db.query(Order).filter(current_user.id == Order.user_id).all()
 
+    return orders
+
+# get particular order
+@app.get("/orders/{order_id}", response_model=OrderResponse)
+async def get_order(
+    order_id: int,
+    db: db_dependency,
+    current_user: Users = Depends(get_current_user)
+):
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return order
