@@ -7,7 +7,7 @@ from app.models import UserRole, ProductCategory
 class UserCreate(BaseModel):
     email: EmailStr
     username: str
-    password: constr(min_length=8)
+    password: constr(min_length=8) # type: ignore
     full_name: Optional[str] = None
     
 # Schema for user data in responses (no password)    

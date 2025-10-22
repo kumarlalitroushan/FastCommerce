@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, TypeAlias
 from typing import List, Annotated
 
 from app.models import *
@@ -32,7 +32,7 @@ def get_db():
         db.close()    
 
 #dependency injection
-db_dependency = Annotated[Session, Depends(get_db)]
+db_dependency : TypeAlias = Annotated[Session, Depends(get_db)]
 
 
 # ---- user endpoints ----
@@ -92,8 +92,30 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: 
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.put("/admin/users/{user_id}/role", response_model=UserResponse)
+async def update_user_role(user_id: int, role_update: UserRoleUpdate, db: db_dependency, current_user: Users=Depends(get_super_admin_user)):
+    user = db.query(Users).filter(Users.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # prevent superusers to demote themselves
+    if user.id == current_user.id and role_update.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot demote yourself from SUPER_ADMIN"
+        )
+
+    user.role = role_update.role
+
+    db.commit()
+    db.refresh(user) 
+
+    return user
+
 # -------- Product Management Endpoints ------------
 
+
+# add products (Note: only admin/super admin can add products)
 @app.post("/products", response_model= ProductResponse)
 async def create_product(product: ProductCreate, db: db_dependency, current_user: Users= Depends(get_admin_user)):
     db_product = Product(**product.dict())
@@ -102,3 +124,91 @@ async def create_product(product: ProductCreate, db: db_dependency, current_user
     db.refresh(db_product)
     
     return db_product
+
+# Get product details with skip and limit feature
+@app.get("/products", response_model= List[ProductResponse])
+async def get_products(
+    db: db_dependency,
+    skip: int= 0,
+    limit: int = 10,
+    category: Optional[str] = None,
+):
+    query = db.query(Product).filter(Product.is_active == True)
+    products = query.offset(skip).limit(limit).all()
+
+    return products
+
+@app.get("/products/{product_id}", response_model=ProductResponse)
+async def get_product(db: db_dependency, product_id:int):
+    product = db.query(Product).filter(Product.id == product_id).first()
+
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="product not found")
+
+    return product
+
+
+# ============================================================================
+# 11. ORDER MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/orders", response_model= OrderResponse)
+async def create_order(order: OrderCreate, db: db_dependency, current_user : Users= Depends(get_current_user)):
+    total_amount = 0
+    order_items_data = []
+
+    # Validating products and calculate total
+
+    for item in order.items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+
+        if not product:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Product {item.product_id} not found"
+            )
+        
+        if product.stock_quantity < item.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for product {product.name}"
+            )
+        
+        item_total = product.price * item.quantity
+        total_amount += item_total
+
+        order_items_data.append({
+            "product_id": item.product_id,
+            "quantity": item.quantity,
+            "price_per_item": product.price,
+            "product": product
+        })
+
+    # Saving order in DB
+    db_order = Order(
+        user_id=current_user.id,
+        total_amount=total_amount,
+        status="pending",
+        stripe_payment_intent_id= 'pass'
+    )
+
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+
+    # Create order Items
+
+    for items in order_items_data:
+        db_order_item = OrderItem(
+            order_id = db_order.id,
+            product_id = items["product_id"],
+            quantity=items["quantity"],
+            price_per_item=items["price_per_item"]
+        )
+        db.add(db_order_item)
+
+    db.commit()
+
+    return db_order
+
+
